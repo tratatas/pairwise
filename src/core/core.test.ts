@@ -6,6 +6,7 @@ import {
   createProject,
   parseBulkNames,
   previewItemsChange,
+  resetAnswers,
   resolveManually,
   setAskReverse,
   setItems,
@@ -335,5 +336,18 @@ describe('parseBulkNames', () => {
     const r = parseBulkNames('A\nB\nC', [{ id: '1', name: 'X' }], 3);
     expect(r.names).toEqual(['A', 'B']);
     expect(r.overLimit).toEqual(['C']);
+  });
+});
+
+describe('resetAnswers', () => {
+  it('clears answers and decisions and asks everything again', () => {
+    let p = setItems(createProject('x', 'p', NOW), items('A', 'B', 'C'), seeded(1), NOW);
+    p = answerAll(p, () => 'better');
+    p = resolveManually(p, 'A', 'B', 'equal', NOW);
+    p = resetAnswers(p, seeded(2), NOW);
+    expect(p.responses).toHaveLength(0);
+    expect(p.resolutions).toHaveLength(0);
+    expect(p.pending).toHaveLength(6);
+    expect(p.items).toHaveLength(3);
   });
 });

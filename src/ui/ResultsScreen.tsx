@@ -2,11 +2,13 @@ import { useMemo, useState } from 'react';
 import { computeScores, effectivePairs, findInconsistencies } from '../core/analysis';
 import type { Project } from '../core/types';
 import { navigate } from './App';
+import { ResetAnswers } from './ItemsScreen';
 import { formatNumber, formatPercent } from './format';
 
 interface Props {
   project: Project;
   saveFile: () => void;
+  update: (p: Project) => void;
 }
 
 const CELL_CLASS: Record<string, string> = { '1': 'win', '0.5': 'tie', '0': 'loss' };
@@ -17,7 +19,7 @@ interface Sort {
   desc: boolean;
 }
 
-export function ResultsScreen({ project, saveFile }: Props) {
+export function ResultsScreen({ project, saveFile, update }: Props) {
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
   const [sort, setSort] = useState<Sort>({ key: 'score', desc: true });
@@ -170,6 +172,7 @@ export function ResultsScreen({ project, saveFile }: Props) {
         </button>
       </div>
       {error && <p className="error">{error}</p>}
+      <ResetAnswers project={project} update={update} />
     </>
   );
 }

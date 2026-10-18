@@ -1,8 +1,17 @@
 import { useState } from 'react';
 import { comparisonCount } from '../core/pairs';
-import { MAX_ITEMS, normalizeName, parseBulkNames, previewItemsChange, renameProject, setAskReverse, setItems } from '../core/project';
+import {
+  MAX_ITEMS,
+  normalizeName,
+  parseBulkNames,
+  previewItemsChange,
+  renameProject,
+  resetAnswers,
+  setAskReverse,
+  setItems,
+} from '../core/project';
 import type { Item, Project } from '../core/types';
-import { navigate, now } from './App';
+import { DEFAULT_PROJECT_NAME, navigate, now } from './App';
 import { newId } from './ids';
 import { plural } from './format';
 
@@ -96,6 +105,8 @@ export function ItemsScreen({ project, update }: Props) {
         <input
           defaultValue={project.name}
           maxLength={120}
+          autoFocus={project.name === DEFAULT_PROJECT_NAME && items.length === 0}
+          onFocus={(e) => project.name === DEFAULT_PROJECT_NAME && e.target.select()}
           onBlur={(e) => {
             const name = e.target.value.trim();
             if (name && name !== project.name) update(renameProject(project, name, now()));
@@ -219,6 +230,25 @@ export function ItemsScreen({ project, update }: Props) {
         </button>
       )}
       {items.length < 2 && <p className="muted">Добавьте хотя бы два элемента.</p>}
+      <ResetAnswers project={project} update={update} />
     </>
+  );
+}
+
+/** Starts the comparison over with the same items. */
+export function ResetAnswers({ project, update }: Props) {
+  if (project.responses.length === 0 && project.resolutions.length === 0) return null;
+  const reset = () => {
+    const ok = window.confirm(
+      `Удалить все ответы (${project.responses.length}) и начать сравнение заново? Элементы и описания сохранятся. Действие нельзя отменить — при необходимости сначала сохраните файл проекта.`,
+    );
+    if (!ok) return;
+    update(resetAnswers(project, Math.random, now()));
+    navigate(project.id, 'compare');
+  };
+  return (
+    <button className="wide secondary danger-outline" onClick={reset}>
+      Сбросить ответы и начать сравнение заново
+    </button>
   );
 }

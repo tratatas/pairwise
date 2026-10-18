@@ -185,3 +185,10 @@ export function parseBulkNames(text: string, existing: readonly Item[], max = MA
 export function normalizeName(name: string): string {
   return name.trim().replace(/\s+/g, ' ').toLocaleLowerCase('ru-RU');
 }
+
+/** Clears all answers and manual decisions, keeps items and settings, and starts the survey over. */
+export function resetAnswers(project: Project, random: Random, now: string): Project {
+  const next: Project = { ...project, responses: [], resolutions: [], recompareAsked: undefined, updatedAt: now };
+  next.pending = rebuildPending(next, random);
+  return next;
+}

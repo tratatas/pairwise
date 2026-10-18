@@ -1,10 +1,9 @@
 import { useEffect, useRef, useState } from 'react';
 import { answeredCount, comparisonCount } from '../core/pairs';
-import { createProject } from '../core/project';
 import type { Project } from '../core/types';
 import { deleteProject, getProject, listProjects, saveProject } from '../storage/db';
 import { FILE_EXTENSION, ImportError, readProjectFile } from '../storage/file';
-import { navigate, now } from './App';
+import { navigate, startNewProject } from './App';
 import { newId } from './ids';
 import { formatDate } from './format';
 
@@ -23,9 +22,7 @@ export function ProjectsScreen() {
     e.preventDefault();
     const trimmed = name.trim();
     if (!trimmed) return;
-    const project = createProject(trimmed, newId(), now());
-    await saveProject(project);
-    navigate(project.id, 'items');
+    await startNewProject(trimmed);
   };
 
   const importFile = async (file: File) => {

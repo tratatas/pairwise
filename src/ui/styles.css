@@ -875,3 +875,22 @@ button.sort.active {
 .matrix td {
   vertical-align: middle;
 }
+
+.topbar .new {
+  margin-left: auto;
+  color: var(--accent-text);
+  white-space: nowrap;
+  font-size: 0.9rem;
+}
+
+button.danger-outline {
+  color: var(--danger);
+  border-color: var(--danger);
+  margin-top: 24px;
+}
+
+@media (max-width: 480px) {
+  .wide-only {
+    display: none;
+  }
+}

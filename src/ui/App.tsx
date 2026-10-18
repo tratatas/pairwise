@@ -2,7 +2,7 @@ import { useCallback, useEffect, useState } from 'react';
 import type { Project } from '../core/types';
 import { effectivePairs } from '../core/analysis';
 import { answeredCount, comparisonCount } from '../core/pairs';
-import { needsFileSave, markExported } from '../core/project';
+import { createProject, needsFileSave, markExported } from '../core/project';
 import { getProject, requestPersistence, saveProject } from '../storage/db';
 import { downloadProject } from '../storage/file';
 import { CheckScreen } from './CheckScreen';
@@ -11,6 +11,7 @@ import { ItemsScreen } from './ItemsScreen';
 import { ProjectsScreen } from './ProjectsScreen';
 import { ResultsScreen } from './ResultsScreen';
 import { UpdatePrompt } from './UpdatePrompt';
+import { newId } from './ids';
 
 export type Tab = 'items' | 'compare' | 'check' | 'results';
 
@@ -33,6 +34,15 @@ export function navigate(projectId: string | null, tab: Tab = 'items'): void {
 }
 
 export const now = () => new Date().toISOString();
+
+export const DEFAULT_PROJECT_NAME = 'Новый проект';
+
+/** Creates an empty project and opens its item list. */
+export async function startNewProject(name = DEFAULT_PROJECT_NAME): Promise<void> {
+  const project = createProject(name, newId(), now());
+  await saveProject(project);
+  navigate(project.id, 'items');
+}
 
 export function App() {
   const [route, setRoute] = useState<Route>(parseHash);
@@ -106,6 +116,9 @@ export function App() {
           ← Проекты
         </button>
         <h1 className="title">{project.name}</h1>
+        <button className="link new" onClick={() => void startNewProject()} title="Создать новый проект">
+          + Новый<span className="wide-only"> проект</span>
+        </button>
       </header>
       <nav className="tabs">
         {TABS.map((t) => (
@@ -127,7 +140,7 @@ export function App() {
         {tab === 'items' && <ItemsScreen project={project} update={update} />}
         {tab === 'compare' && <CompareScreen project={project} update={update} />}
         {tab === 'check' && <CheckScreen project={project} update={update} />}
-        {tab === 'results' && <ResultsScreen project={project} saveFile={saveFile} />}
+        {tab === 'results' && <ResultsScreen project={project} saveFile={saveFile} update={update} />}
       </main>
       <UpdatePrompt />
     </>
