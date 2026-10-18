@@ -1,5 +1,7 @@
 import { useCallback, useEffect, useState } from 'react';
 import type { Project } from '../core/types';
+import { effectivePairs } from '../core/analysis';
+import { answeredCount, comparisonCount } from '../core/pairs';
 import { needsFileSave, markExported } from '../core/project';
 import { getProject, requestPersistence, saveProject } from '../storage/db';
 import { downloadProject } from '../storage/file';
@@ -90,6 +92,13 @@ export function App() {
   if (!project || project.id !== route.projectId) return <main className="page">Загрузка…</main>;
 
   const tab = route.tab;
+  const total = comparisonCount(project.items.length, project.settings.askReverse);
+  const done = answeredCount(project.items, project.responses, project.settings.askReverse);
+  const conflicts = [...effectivePairs(project).values()].filter((s) => s.status === 'conflict').length;
+  const badge: Partial<Record<Tab, { text: string; alert?: boolean }>> = {
+    compare: total > 0 && done < total ? { text: `${done}/${total}` } : undefined,
+    check: conflicts > 0 ? { text: String(conflicts), alert: true } : undefined,
+  };
   return (
     <>
       <header className="topbar">
@@ -102,13 +111,14 @@ export function App() {
         {TABS.map((t) => (
           <button key={t.id} className={t.id === tab ? 'tab active' : 'tab'} onClick={() => navigate(project.id, t.id)}>
             {t.label}
+            {badge[t.id] && <span className={badge[t.id]!.alert ? 'badge alert' : 'badge'}>{badge[t.id]!.text}</span>}
           </button>
         ))}
       </nav>
       {needsFileSave(project) && (
         <div className="banner">
-          <span>Изменения не сохранены в файл. Файл нужен для переноса на другое устройство и как резервная копия.</span>
-          <button className="small" onClick={saveFile}>
+          <span title="Файл нужен для переноса на другое устройство и как резервная копия">Есть изменения, не сохранённые в файл</span>
+          <button className="link" onClick={saveFile}>
             Сохранить файл
           </button>
         </div>

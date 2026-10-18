@@ -4,6 +4,7 @@ import { answeredCount, buildQuestionOrder, comparisonCount } from './pairs';
 import {
   answerCurrent,
   createProject,
+  parseBulkNames,
   previewItemsChange,
   resolveManually,
   setAskReverse,
@@ -315,5 +316,24 @@ describe('performance', () => {
     const inc = findInconsistencies(list, pairs);
     recompareQueue(pairs, inc);
     expect(performance.now() - start).toBeLessThan(100);
+  });
+});
+
+describe('parseBulkNames', () => {
+  it('splits lines and spreadsheet cells, strips list markers', () => {
+    const r = parseBulkNames('1. Скорость\n- Вес\t• Цена\r\n\n  Надёжность  ', []);
+    expect(r.names).toEqual(['Скорость', 'Вес', 'Цена', 'Надёжность']);
+  });
+
+  it('skips duplicates of existing items and of earlier lines', () => {
+    const r = parseBulkNames('Вес\nцена\nЦена', [{ id: '1', name: 'вес' }]);
+    expect(r.names).toEqual(['цена']);
+    expect(r.duplicates).toEqual(['Вес', 'Цена']);
+  });
+
+  it('respects the item limit', () => {
+    const r = parseBulkNames('A\nB\nC', [{ id: '1', name: 'X' }], 3);
+    expect(r.names).toEqual(['A', 'B']);
+    expect(r.overLimit).toEqual(['C']);
   });
 });

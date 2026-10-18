@@ -150,3 +150,38 @@ export function needsFileSave(project: Project): boolean {
   if (project.items.length === 0) return false;
   return !project.lastExportedAt || project.lastExportedAt < project.updatedAt;
 }
+
+export interface BulkNames {
+  /** Names to add, in input order. */
+  names: string[];
+  /** Names skipped because they repeat an existing item or an earlier line. */
+  duplicates: string[];
+  /** Names that did not fit under MAX_ITEMS. */
+  overLimit: string[];
+}
+
+/**
+ * Splits pasted text into item names: one per line or per tab-separated cell (rows and columns
+ * copied from a spreadsheet), without list markers such as «1.», «-» or «•».
+ */
+export function parseBulkNames(text: string, existing: readonly Item[], max = MAX_ITEMS): BulkNames {
+  const seen = new Set(existing.map((i) => normalizeName(i.name)));
+  const result: BulkNames = { names: [], duplicates: [], overLimit: [] };
+  for (const raw of text.split(/[\r\n\t]+/)) {
+    const name = raw.replace(/^\s*(?:\d+[.)]|[-–—•*·])\s+/, '').trim();
+    if (!name) continue;
+    const key = normalizeName(name);
+    if (seen.has(key)) {
+      result.duplicates.push(name);
+      continue;
+    }
+    seen.add(key);
+    if (existing.length + result.names.length >= max) result.overLimit.push(name);
+    else result.names.push(name);
+  }
+  return result;
+}
+
+export function normalizeName(name: string): string {
+  return name.trim().replace(/\s+/g, ' ').toLocaleLowerCase('ru-RU');
+}

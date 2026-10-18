@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useMemo, useState } from 'react';
 import { computeScores, effectivePairs, findInconsistencies } from '../core/analysis';
 import type { Project } from '../core/types';
 import { navigate } from './App';
@@ -11,11 +11,18 @@ interface Props {
 
 const CELL_CLASS: Record<string, string> = { '1': 'win', '0.5': 'tie', '0': 'loss' };
 
+type SortKey = 'name' | 'score' | 'weight';
+interface Sort {
+  key: SortKey;
+  desc: boolean;
+}
+
 export function ResultsScreen({ project, saveFile }: Props) {
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
-  const pairs = effectivePairs(project);
-  const scores = computeScores(project.items, pairs);
+  const [sort, setSort] = useState<Sort>({ key: 'score', desc: true });
+  const pairs = useMemo(() => effectivePairs(project), [project]);
+  const scores = useMemo(() => computeScores(project.items, pairs), [project.items, pairs]);
 
   if (project.items.length < 2) return <p>Добавьте хотя бы два элемента.</p>;
   if (!scores) {
@@ -36,6 +43,18 @@ export function ResultsScreen({ project, saveFile }: Props) {
   }
 
   const inc = findInconsistencies(project.items, pairs);
+  const index = new Map(project.items.map((item, i) => [item.id, i]));
+  const rowById = new Map(scores.rows.map((r) => [r.id, r]));
+  const order = [...project.items]
+    .map((item) => rowById.get(item.id)!)
+    .sort((x, y) => {
+      const diff =
+        sort.key === 'name' ? x.name.localeCompare(y.name, 'ru') : sort.key === 'score' ? x.score - y.score : x.weight - y.weight;
+      const tie = diff === 0 ? x.name.localeCompare(y.name, 'ru') : 0;
+      return (sort.desc ? -diff : diff) || tie;
+    });
+  const leader = scores.rows[0];
+  const sharedLead = scores.rows.filter((r) => r.place === 1).length > 1;
 
   const exportPdf = async () => {
     setBusy(true);
@@ -51,80 +70,106 @@ export function ResultsScreen({ project, saveFile }: Props) {
     }
   };
 
+  const sortButton = (key: SortKey, label: string) => {
+    const active = sort.key === key;
+    return (
+      <button
+        className={active ? 'sort active' : 'sort'}
+        onClick={() => setSort({ key, desc: active ? !sort.desc : key !== 'name' })}
+        title="Сортировать"
+      >
+        {label}
+        <span aria-hidden="true">{active ? (sort.desc ? ' ▼' : ' ▲') : ' ↕'}</span>
+      </button>
+    );
+  };
+  const ariaSort = (key: SortKey) => (sort.key === key ? (sort.desc ? 'descending' : 'ascending') : 'none');
+
   return (
     <>
-      <div className="row wrap">
-        <button onClick={saveFile}>Сохранить файл проекта</button>
-        <button className="secondary" onClick={exportPdf} disabled={busy}>
-          {busy ? 'Формирую PDF…' : 'Экспорт в PDF'}
-        </button>
+      <div className="summary">
+        <div>
+          <span className="muted small-text">{sharedLead ? 'Лидеры' : 'Лидер'}</span>
+          <strong>
+            {scores.rows
+              .filter((r) => r.place === 1)
+              .map((r) => r.name)
+              .join(', ')}
+          </strong>
+          <span className="muted small-text">вес {formatPercent(leader.weight)}</span>
+        </div>
+        <div>
+          <span className="muted small-text">Согласованность</span>
+          <strong>{formatPercent(inc.zeta)}</strong>
+          {inc.d + inc.weak.length > 0 && (
+            <button className="link inline small-text" onClick={() => navigate(project.id, 'check')}>
+              несогласованных троек: {inc.d + inc.weak.length}
+            </button>
+          )}
+        </div>
       </div>
-      {error && <p className="error">{error}</p>}
 
-      <p className="muted">
-        ζ Кендалла: <strong>{formatNumber(inc.zeta, 3)}</strong> · строгих циклов: {inc.d} · нестрогих противоречий: {inc.weak.length}
-        {inc.d + inc.weak.length > 0 && (
-          <>
-            {' '}
-            · <button className="link inline" onClick={() => navigate(project.id, 'check')}>подробнее</button>
-          </>
-        )}
+      <p className="muted small-text">
+        Клетка показывает, как элемент строки соотносится с элементом столбца: 1 — важнее, 0,5 — равны, 0 — менее важен. Очки —
+        сумма по строке, вес — доля очков от общего числа. Нажмите на заголовок, чтобы отсортировать.
       </p>
-
-      <table className="results">
-        <thead>
-          <tr>
-            <th>Место</th>
-            <th>Элемент</th>
-            <th className="num">Очки</th>
-            <th className="num">Вес</th>
-          </tr>
-        </thead>
-        <tbody>
-          {scores.rows.map((r) => (
-            <tr key={r.id}>
-              <td className="center">{r.place}</td>
-              <td>
-                {r.name}
-                <div className="bar" style={{ width: `${r.weight * 100}%` }} />
-              </td>
-              <td className="num">{formatNumber(r.score)}</td>
-              <td className="num">{formatPercent(r.weight)}</td>
-            </tr>
-          ))}
-        </tbody>
-      </table>
-
-      <h2>Матрица</h2>
-      <p className="muted small-text">Строка относительно столбца: 1 — важнее, 0,5 — равны, 0 — менее важен.</p>
       <div className="matrix-wrap">
         <table className="matrix">
           <thead>
             <tr>
-              <th />
-              {project.items.map((item, i) => (
-                <th key={item.id} title={item.name}>
-                  {i + 1}
+              <th className="corner" aria-sort={ariaSort('name')}>
+                {sortButton('name', 'Элемент')}
+              </th>
+              {order.map((r) => (
+                <th key={r.id} className="col-head" title={r.name}>
+                  <span>{r.name}</span>
                 </th>
               ))}
+              <th className="num-head" aria-sort={ariaSort('score')}>
+                {sortButton('score', 'Очки')}
+              </th>
+              <th className="num-head" aria-sort={ariaSort('weight')}>
+                {sortButton('weight', 'Вес')}
+              </th>
             </tr>
           </thead>
           <tbody>
-            {project.items.map((item, i) => (
-              <tr key={item.id}>
-                <th className="row-head" title={item.name}>
-                  {i + 1}. {item.name}
-                </th>
-                {scores.matrix[i].map((v, j) => (
-                  <td key={j} className={v === null ? 'diag' : CELL_CLASS[String(v)]}>
-                    {v === null ? '' : formatNumber(v)}
+            {order.map((row) => {
+              const i = index.get(row.id)!;
+              return (
+                <tr key={row.id}>
+                  <th className="row-head" title={row.name}>
+                    {row.name}
+                  </th>
+                  {order.map((col) => {
+                    const v = scores.matrix[i][index.get(col.id)!];
+                    return (
+                      <td key={col.id} className={v === null ? 'diag' : CELL_CLASS[String(v)]}>
+                        {v === null ? '' : formatNumber(v)}
+                      </td>
+                    );
+                  })}
+                  <td className="num">{formatNumber(row.score)}</td>
+                  <td className="num weight">
+                    {formatPercent(row.weight)}
+                    <div className="bar" style={{ width: `${row.weight * 100}%` }} />
                   </td>
-                ))}
-              </tr>
-            ))}
+                </tr>
+              );
+            })}
           </tbody>
         </table>
       </div>
+
+      <div className="row wrap actions">
+        <button onClick={exportPdf} disabled={busy}>
+          {busy ? 'Формирую PDF…' : 'Экспорт в PDF'}
+        </button>
+        <button className="secondary" onClick={saveFile}>
+          Сохранить файл проекта
+        </button>
+      </div>
+      {error && <p className="error">{error}</p>}
     </>
   );
 }

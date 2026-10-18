@@ -11,7 +11,7 @@ interface Props {
 
 export function CompareScreen({ project, update }: Props) {
   const question = project.pending[0];
-  const names = new Map(project.items.map((i) => [i.id, i.name]));
+  const items = new Map(project.items.map((i) => [i.id, i]));
   const total = comparisonCount(project.items.length, project.settings.askReverse);
   const done = answeredCount(project.items, project.responses, project.settings.askReverse);
   const recomparing = question !== undefined && question.round > 1;
@@ -68,8 +68,8 @@ export function CompareScreen({ project, update }: Props) {
     );
   }
 
-  const first = names.get(question.first) ?? '?';
-  const second = names.get(question.second) ?? '?';
+  const first = items.get(question.first) ?? { id: question.first, name: '?' };
+  const second = items.get(question.second) ?? { id: question.second, name: '?' };
   const progress = recomparing ? null : total > 0 ? done / total : 0;
 
   return (
@@ -88,21 +88,17 @@ export function CompareScreen({ project, update }: Props) {
       )}
 
       <h2 className="question">Что важнее?</h2>
-      <div className="pair">
-        <span>{first}</span>
-        <span className="vs">или</span>
-        <span>{second}</span>
-      </div>
-
       <div className="answers">
         <button className="answer" onClick={() => answer('better')}>
-          {first} важнее
+          <span className="answer-name">{first.name}</span>
+          {first.note && <span className="answer-note">{first.note}</span>}
         </button>
         <button className="answer equal" onClick={() => answer('equal')}>
           Равны
         </button>
         <button className="answer" onClick={() => answer('worse')}>
-          {second} важнее
+          <span className="answer-name">{second.name}</span>
+          {second.note && <span className="answer-note">{second.note}</span>}
         </button>
       </div>
 

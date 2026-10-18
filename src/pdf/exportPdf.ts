@@ -8,7 +8,8 @@ import { downloadBlob, safeFileName } from '../storage/file';
 import { cycleText, formatNumber, formatPercent, triadText } from '../ui/format';
 
 const FONT = 'PTSans';
-const MATRIX_ON_SEPARATE_PAGE_FROM = 13;
+/** Up to this many items the matrix header shows names on a portrait page; above it, numbers on a landscape page. */
+const NAMES_IN_HEADER_UP_TO = 8;
 const PROBLEMS_LIMIT = 60;
 
 async function toBase64(url: string): Promise<string> {
@@ -40,80 +41,91 @@ export async function exportPdf(
   scores: Scores,
   inc: Inconsistencies,
 ): Promise<void> {
-  const doc = new jsPDF({ unit: 'mm', format: 'a4' });
+  const n = project.items.length;
+  const landscape = n > NAMES_IN_HEADER_UP_TO;
+  const doc = new jsPDF({ unit: 'mm', format: 'a4', orientation: landscape ? 'landscape' : 'portrait' });
   await addFonts(doc);
   const names = new Map(project.items.map((i) => [i.id, i.name]));
-  const margin = 15;
+  const margin = 12;
+  const width = doc.internal.pageSize.getWidth() - 2 * margin;
+  const head = { font: FONT, fontStyle: 'bold' as const, fillColor: [43, 92, 138] as [number, number, number] };
+  const lastY = () => (doc as unknown as { lastAutoTable: { finalY: number } }).lastAutoTable.finalY;
   let y = margin;
 
   doc.setFont(FONT, 'bold').setFontSize(16).text(project.name, margin, y + 5);
   y += 12;
   doc.setFont(FONT, 'normal').setFontSize(10);
+  const triads = inc.strict.length + inc.weak.length;
   const lines = [
-    `Дата: ${new Date().toLocaleString('ru-RU')}`,
-    `Элементов: ${project.items.length}`,
-    `Опрос обратных пар: ${project.settings.askReverse ? 'включён' : 'выключен'}`,
-    `Коэффициент согласованности Кендалла (дзета) = ${formatNumber(inc.zeta, 3)}; строгих циклов: ${inc.d} из ${inc.dMax} возможных; нестрогих противоречий: ${inc.weak.length}`,
+    `Дата: ${new Date().toLocaleString('ru-RU')} · элементов: ${n} · опрос обратных пар: ${project.settings.askReverse ? 'включён' : 'выключен'}`,
+    `Согласованность ответов: ${formatPercent(inc.zeta)} (коэффициент Кендалла); несогласованных троек: ${triads}`,
   ];
   for (const line of lines) {
-    const wrapped = doc.splitTextToSize(line, 180);
+    const wrapped = doc.splitTextToSize(line, width);
     doc.text(wrapped, margin, y);
     y += 5 * wrapped.length;
   }
 
+  // One table: ranking and matrix, rows and columns in ranking order (as on the results screen).
+  const index = new Map(project.items.map((item, i) => [item.id, i]));
+  const order = scores.rows;
+  const numbered = n > NAMES_IN_HEADER_UP_TO;
+  const fontSize = n > 20 ? 5.5 : n > 12 ? 6.5 : 8;
+  doc.setFontSize(8).text('Клетка: элемент строки относительно элемента столбца — 1 важнее, 0,5 равны, 0 менее важен.', margin, y + 2);
   autoTable(doc, {
-    startY: y + 3,
-    head: [['Место', 'Элемент', 'Очки', 'Вес']],
-    body: scores.rows.map((r) => [String(r.place), r.name, formatNumber(r.score), formatPercent(r.weight)]),
-    styles: { font: FONT, fontSize: project.items.length > 20 ? 9 : 10, cellPadding: project.items.length > 20 ? 1.2 : 2 },
-    headStyles: { font: FONT, fontStyle: 'bold', fillColor: [43, 92, 138] },
-    columnStyles: { 0: { halign: 'center', cellWidth: 18 }, 2: { halign: 'right' }, 3: { halign: 'right' } },
-    margin: { left: margin, right: margin },
-  });
-
-  const n = project.items.length;
-  const separate = n >= MATRIX_ON_SEPARATE_PAGE_FROM;
-  if (separate) doc.addPage('a4', 'landscape');
-  const matrixStart = separate ? margin : (doc as unknown as { lastAutoTable: { finalY: number } }).lastAutoTable.finalY + 10;
-  doc.setFont(FONT, 'bold').setFontSize(12).text('Матрица парных сравнений', margin, matrixStart);
-  doc.setFont(FONT, 'normal').setFontSize(8).text('1 — элемент строки важнее, 0,5 — равны, 0 — элемент столбца важнее', margin, matrixStart + 5);
-  const fontSize = n > 20 ? 5 : n > 12 ? 6 : 8;
-  autoTable(doc, {
-    startY: matrixStart + 8,
-    head: [['', ...project.items.map((_, i) => String(i + 1))]],
-    body: project.items.map((item, i) => [
-      `${i + 1}. ${item.name}`,
-      ...scores.matrix[i].map((v) => (v === null ? '—' : formatNumber(v))),
+    startY: y + 5,
+    head: [['Место', 'Элемент', ...order.map((r, i) => (numbered ? String(i + 1) : r.name)), 'Очки', 'Вес']],
+    body: order.map((row, i) => [
+      String(row.place),
+      numbered ? `${i + 1}. ${row.name}` : row.name,
+      ...order.map((col) => {
+        const v = scores.matrix[index.get(row.id)!][index.get(col.id)!];
+        return v === null ? '—' : formatNumber(v);
+      }),
+      formatNumber(row.score),
+      formatPercent(row.weight),
     ]),
-    styles: { font: FONT, fontSize, cellPadding: 0.8, halign: 'center' },
-    headStyles: { font: FONT, fontStyle: 'bold', fillColor: [43, 92, 138] },
-    columnStyles: { 0: { halign: 'left', cellWidth: separate ? 45 : 40 } },
+    styles: { font: FONT, fontSize, cellPadding: 0.8, halign: 'center', valign: 'middle' },
+    headStyles: { ...head, fontSize },
+    columnStyles: { 0: { cellWidth: 10 }, 1: { halign: 'left', cellWidth: numbered ? 42 : 35 } },
     margin: { left: margin, right: margin },
     didParseCell: (data) => {
-      if (data.section !== 'body' || data.column.index === 0) return;
-      const v = scores.matrix[data.row.index][data.column.index - 1];
-      if (v !== null) data.cell.styles.fillColor = CELL_COLORS[String(v)];
+      if (data.section !== 'body') return;
+      const col = data.column.index;
+      if (col >= 2 && col < 2 + n) {
+        const v = scores.matrix[index.get(order[data.row.index].id)!][index.get(order[col - 2].id)!];
+        if (v !== null) data.cell.styles.fillColor = CELL_COLORS[String(v)];
+      } else if (col >= 2 + n) {
+        data.cell.styles.fontStyle = 'bold';
+      }
     },
   });
 
-  if (inc.strict.length > 0 || inc.weak.length > 0) {
-    if (separate) doc.addPage('a4', 'portrait');
+  const described = project.items.filter((i) => i.note);
+  if (described.length > 0) {
     autoTable(doc, {
-      startY: separate ? margin : undefined,
-      head: [['Вид', 'Противоречие']],
+      startY: lastY() + 8,
+      head: [['Элемент', 'Описание']],
+      body: described.map((i) => [i.name, i.note!]),
+      styles: { font: FONT, fontSize: 9 },
+      headStyles: head,
+      columnStyles: { 0: { cellWidth: 50 } },
+      margin: { left: margin, right: margin },
+    });
+  }
+
+  if (triads > 0) {
+    autoTable(doc, {
+      startY: lastY() + 8,
+      head: [['Несогласованные ответы (нельзя выстроить в один порядок)']],
       body: [
-        ...inc.strict.map((c) => ['Цикл', cycleText(c, names)]),
-        ...inc.weak.map((t) => ['Нестрогое', triadText(t, pairs, names)]),
+        ...inc.strict.map((c) => [cycleText(c, names)]),
+        ...inc.weak.map((t) => [triadText(t, pairs, names)]),
       ]
         .slice(0, PROBLEMS_LIMIT)
-        .concat(
-          inc.strict.length + inc.weak.length > PROBLEMS_LIMIT
-            ? [['', `…и ещё ${inc.strict.length + inc.weak.length - PROBLEMS_LIMIT}; полный список на экране «Проверка»`]]
-            : [],
-        ),
+        .concat(triads > PROBLEMS_LIMIT ? [[`…и ещё ${triads - PROBLEMS_LIMIT}; полный список на экране «Проверка»`]] : []),
       styles: { font: FONT, fontSize: 9 },
-      headStyles: { font: FONT, fontStyle: 'bold', fillColor: [43, 92, 138] },
-      columnStyles: { 0: { cellWidth: 25 } },
+      headStyles: head,
       margin: { left: margin, right: margin },
     });
   }
